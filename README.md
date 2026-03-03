@@ -63,6 +63,9 @@ print(f"Rotation Forest Accuracy: {rot.score(X, y):.3f}")
 - `mondrian=True`: オンライン学習可能な無限次元フォレスト (Mondrian Forest) を構築します。
 - `isolation=True`: 教師なし異常検知のための Isolation Forest を構築します (Classifierのみ)。
 - `survival=True`: Random Survival Forest を構築します (Regressorのみ。`fit` 時に `e=events` パラメータが必要です)。
+- `linear_boost=True`: 線形葉木を用いた勾配ブースティング (LinearBoost) を行います (Regressorのみ)。
+- `quantile_reg=True`: Meinshausen (2006) 手法による分位点回帰フォレストを構築します (Regressorのみ)。
+
 
 ```python
 from forests import ForestsClassifier, ForestsRegressor

@@ -139,10 +139,14 @@ class BaseForestsBuilder(BaseEstimator):
         Use SoftDecisionTree (sigmoid gates, gradient learning).
     linear_leaf : bool, default=False
         Fit a linear model at each leaf (LinearForest).
+    linear_boost : bool, default=False
+        Use Linear Boosting (LinearBoost).
     generalized_target : {"mean", "quantile", "causal"}, default="mean"
         GRF target type. Activates GeneralizedRandomForest when not "mean".
     quantile : float, default=0.5
-        Quantile for generalized_target="quantile".
+        Quantile for generalized_target="quantile" or quantile_reg=True.
+    quantile_reg : bool, default=False
+        Use Quantile Regression Forest (Meinshausen 2006 version).
 
     --- Ensemble strategy ---
     bootstrap : {"standard", "bernoulli", "none"}, default="standard"
@@ -238,6 +242,8 @@ class BaseForestsBuilder(BaseEstimator):
         isolation: bool = False,
         mondrian: bool = False,
         survival: bool = False,
+        linear_boost: bool = False,
+        quantile_reg: bool = False,
         n_jobs: int = 1,
         random_state: Optional[int] = None,
         verbose: int = 0,
@@ -281,6 +287,8 @@ class BaseForestsBuilder(BaseEstimator):
         self.isolation = isolation
         self.mondrian = mondrian
         self.survival = survival
+        self.linear_boost = linear_boost
+        self.quantile_reg = quantile_reg
         self.n_jobs = n_jobs
         self.random_state = random_state
         self.verbose = verbose
@@ -336,21 +344,39 @@ class BaseForestsBuilder(BaseEstimator):
             )
 
         # --- GRF variants ---
-        if self.generalized_target == "causal":
-            from .grf import CausalForest
-            return CausalForest(
-                n_estimators=self.n_estimators,
-                max_depth=self.max_depth,
-                min_samples_leaf=self.min_samples_leaf,
-                max_features=self.max_features,
-                bootstrap=use_bootstrap,
-                n_jobs=self.n_jobs,
-                random_state=self.random_state,
-            )
-        if self.generalized_target == "quantile":
-            from .grf import QuantileForest
-            return QuantileForest(
-                quantile=self.quantile,
+        if self.generalized_target in ["causal", "quantile"]:
+            if self.task == "classification":
+                raise ValueError(f"GeneralizedRandomForest ({self.generalized_target}) is for regression/causal tasks and not supported in ForestsClassifier.")
+            if self.generalized_target == "causal":
+                from .grf import CausalForest
+                return CausalForest(
+                    n_estimators=self.n_estimators,
+                    max_depth=self.max_depth,
+                    min_samples_leaf=self.min_samples_leaf,
+                    max_features=self.max_features,
+                    bootstrap=use_bootstrap,
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state,
+                )
+            else:
+                from .grf import QuantileForest
+                return QuantileForest(
+                    quantile=self.quantile,
+                    n_estimators=self.n_estimators,
+                    max_depth=self.max_depth,
+                    min_samples_leaf=self.min_samples_leaf,
+                    max_features=self.max_features,
+                    bootstrap=use_bootstrap,
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state,
+                )
+
+        # --- Quantile Regression Forest (Meinshausen) ---
+        if self.quantile_reg:
+            if self.task == "classification":
+                raise ValueError("QuantileRegressionForest (quantile_reg=True) is for regression tasks.")
+            from .extras import QuantileRegressionForest
+            return QuantileRegressionForest(
                 n_estimators=self.n_estimators,
                 max_depth=self.max_depth,
                 min_samples_leaf=self.min_samples_leaf,
@@ -360,18 +386,32 @@ class BaseForestsBuilder(BaseEstimator):
                 random_state=self.random_state,
             )
 
-        # --- Linear leaf ---
-        if self.linear_leaf:
-            from .linear_tree import LinearForest
-            return LinearForest(
-                n_estimators=self.n_estimators,
-                max_depth=self.max_depth,
-                min_samples_leaf=self.min_samples_leaf,
-                max_features=self.max_features,
-                bootstrap=use_bootstrap,
-                n_jobs=self.n_jobs,
-                random_state=self.random_state,
-            )
+        # --- Linear leaf / LinearBoost ---
+        if self.linear_boost or self.linear_leaf:
+            if self.task == "classification":
+                name = "LinearBoost" if self.linear_boost else "LinearForest"
+                raise ValueError(f"{name} (linear_leaf/boost=True) is for regression tasks.")
+            if self.linear_boost:
+                from .linear_tree import LinearBoost
+                return LinearBoost(
+                    n_estimators=self.n_estimators,
+                    learning_rate=self.learning_rate,
+                    max_depth=self.max_depth if self.max_depth else 3,
+                    min_samples_leaf=self.min_samples_leaf if self.min_samples_leaf > 1 else 5,
+                    max_features=self.max_features,
+                    random_state=self.random_state,
+                )
+            else:
+                from .linear_tree import LinearForest
+                return LinearForest(
+                    n_estimators=self.n_estimators,
+                    max_depth=self.max_depth,
+                    min_samples_leaf=self.min_samples_leaf,
+                    max_features=self.max_features,
+                    bootstrap=use_bootstrap,
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state,
+                )
 
         # --- Monotone constraints ---
         if self.monotone_constraints:

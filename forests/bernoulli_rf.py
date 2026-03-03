@@ -58,34 +58,7 @@ class _BernoulliRegressorTree(CARTRegressor):
 
 
 class BernoulliRandomForest(ClassifierForestMixin, BaseForest):
-    """Random Forest with Bernoulli feature sampling.
-
-    At each split, each feature is independently included with probability
-    `feature_prob` (Bernoulli distribution), rather than fixing max_features.
-    This provides a different exploration-exploitation tradeoff than RF.
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    feature_prob : float, default=0.5
-        Probability of including each feature at each split.
-    criterion : {"gini", "entropy"}, default="gini"
-    max_depth : int or None
-    min_samples_split : int, default=2
-    min_samples_leaf : int, default=1
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import BernoulliRandomForest
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-    >>> clf = BernoulliRandomForest(n_estimators=10, feature_prob=0.5, random_state=0)
-    >>> clf.fit(X, y).score(X, y) > 0.8
-    True
-    """
+    """Random Forest Classifier with Bernoulli feature sampling."""
 
     def __init__(
         self,
@@ -128,7 +101,7 @@ class BernoulliRandomForest(ClassifierForestMixin, BaseForest):
             random_state=random_state,
         )
 
-    def fit(self, X: np.ndarray, y: np.ndarray, **kwargs) -> "BernoulliRandomForest":
+    def fit(self, X, y, **kwargs):
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
         self.classes_ = np.unique(y)
@@ -136,15 +109,54 @@ class BernoulliRandomForest(ClassifierForestMixin, BaseForest):
         super().fit(X, y, **kwargs)
         return self
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        check_is_fitted(self, "estimators_")
-        X = np.asarray(X, dtype=float)
-        all_proba = [
-            np.array([tree._predict_node(x, tree.root_) for x in X])
-            for tree in self.estimators_
-        ]
-        return np.mean(all_proba, axis=0)
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        proba = self.predict_proba(X)
-        return self.classes_[np.argmax(proba, axis=1)]
+class BernoulliRandomForestRegressor(RegressorForestMixin, BaseForest):
+    """Random Forest Regressor with Bernoulli feature sampling."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        feature_prob: float = 0.5,
+        criterion: str = "mse",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_impurity_decrease: float = 0.0,
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.feature_prob = feature_prob
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+
+    def _make_estimator(self, random_state: int) -> _BernoulliRegressorTree:
+        return _BernoulliRegressorTree(
+            feature_prob=self.feature_prob,
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            random_state=random_state,
+        )
+
+    def fit(self, X, y, **kwargs):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+        super().fit(X, y, **kwargs)
+        return self
+

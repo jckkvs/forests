@@ -450,8 +450,9 @@ class BaseForestsBuilder(BaseEstimator):
 
         # --- Rotation transforms ---
         if self.rotation:
-            from .oblique import RotationForest
-            return RotationForest(
+            from .oblique import RotationForest, RotationForestRegressor
+            Cls = RotationForest if self.task == "classification" else RotationForestRegressor
+            return Cls(
                 criterion=crit,
                 n_estimators=self.n_estimators,
                 max_depth=self.max_depth,
@@ -462,8 +463,9 @@ class BaseForestsBuilder(BaseEstimator):
                 random_state=self.random_state,
             )
         if self.random_rotation:
-            from .oblique import RandomRotationForest
-            return RandomRotationForest(
+            from .oblique import RandomRotationForest, RandomRotationForestRegressor
+            Cls = RandomRotationForest if self.task == "classification" else RandomRotationForestRegressor
+            return Cls(
                 criterion=crit,
                 n_estimators=self.n_estimators,
                 max_depth=self.max_depth,
@@ -477,8 +479,9 @@ class BaseForestsBuilder(BaseEstimator):
 
         # --- Kernel split ---
         if self.split_type == "kernel":
-            from .kernel_forest import RandomKernelForest
-            return RandomKernelForest(
+            from .kernel_forest import RandomKernelForest, RandomKernelForestRegressor
+            Cls = RandomKernelForest if self.task == "classification" else RandomKernelForestRegressor
+            return Cls(
                 n_estimators=self.n_estimators,
                 n_rff=self.n_rff,
                 gamma=self.gamma,
@@ -512,8 +515,9 @@ class BaseForestsBuilder(BaseEstimator):
                     random_state=self.random_state,
                 )
             else:
-                from .oblique import ObliqueForest
-                return ObliqueForest(
+                from .oblique import ObliqueForest, ObliqueForestRegressor
+                Cls = ObliqueForest if self.task == "classification" else ObliqueForestRegressor
+                return Cls(
                     n_estimators=self.n_estimators,
                     n_directions=self.n_directions,
                     criterion=crit,
@@ -529,8 +533,9 @@ class BaseForestsBuilder(BaseEstimator):
 
         # --- Variable reuse penalty ---
         if self.variable_reuse_penalty > 0.0:
-            from .regularized import VariablePenaltyForest
-            return VariablePenaltyForest(
+            from .regularized import VariablePenaltyForest, VariablePenaltyForestRegressor
+            Cls = VariablePenaltyForest if self.task == "classification" else VariablePenaltyForestRegressor
+            return Cls(
                 n_estimators=self.n_estimators,
                 reuse_alpha=self.variable_reuse_penalty,
                 criterion=crit,
@@ -546,8 +551,9 @@ class BaseForestsBuilder(BaseEstimator):
 
         # --- Leaf weight regularization ---
         if self.leaf_regularization != "none":
-            from .regularized import LeafWeightRegularizedForest
-            return LeafWeightRegularizedForest(
+            from .regularized import LeafWeightRegularizedForest, LeafWeightRegularizedForestClassifier
+            Cls = LeafWeightRegularizedForestClassifier if self.task == "classification" else LeafWeightRegularizedForest
+            return Cls(
                 n_estimators=self.n_estimators,
                 leaf_reg=self.leaf_regularization,
                 alpha=self.leaf_reg_alpha,
@@ -564,8 +570,9 @@ class BaseForestsBuilder(BaseEstimator):
 
         # --- Bernoulli bootstrap ---
         if self.bootstrap == "bernoulli":
-            from .bernoulli_rf import BernoulliRandomForest
-            return BernoulliRandomForest(
+            from .bernoulli_rf import BernoulliRandomForest, BernoulliRandomForestRegressor
+            Cls = BernoulliRandomForest if self.task == "classification" else BernoulliRandomForestRegressor
+            return Cls(
                 n_estimators=self.n_estimators,
                 feature_prob=self.feature_prob,
                 criterion=crit,

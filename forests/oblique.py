@@ -263,35 +263,7 @@ class _ObliqueRegressorTree(CARTRegressor):
 # ---------------------------------------------------------------------------
 
 class ObliqueForest(ClassifierForestMixin, BaseForest):
-    """Oblique Random Forest using linear combination splits.
-
-    Implements: Murthy et al. (1994) CART-LC style oblique splits.
-    At each node, `n_directions` random weight vectors are tried
-    and the best linear-combination split is selected.
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    n_directions : int, default=5
-        Random oblique directions to try per node.
-    criterion : {"gini", "entropy"}, default="gini"
-    max_depth : int or None
-    min_samples_split : int, default=2
-    min_samples_leaf : int, default=1
-    max_features : int, float, str, or None, default="sqrt"
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import ObliqueForest
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-    >>> clf = ObliqueForest(n_estimators=10, random_state=0)
-    >>> clf.fit(X, y).score(X, y) > 0.8
-    True
-    """
+    """Oblique Random Forest Classifier using linear combination splits."""
 
     def __init__(
         self,
@@ -318,8 +290,6 @@ class ObliqueForest(ClassifierForestMixin, BaseForest):
             verbose=verbose,
         )
         self.n_directions = n_directions
-        if self.n_directions < 1:
-            raise ValueError(f"n_directions must be >= 1, got {self.n_directions}")
         self.criterion = criterion
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
@@ -347,18 +317,54 @@ class ObliqueForest(ClassifierForestMixin, BaseForest):
         super().fit(X, y, **kwargs)
         return self
 
-    def predict_proba(self, X):
-        check_is_fitted(self, "estimators_")
-        X = np.asarray(X, dtype=float)
-        all_proba = [
-            np.array([tree._predict_node(x, tree.root_) for x in X])
-            for tree in self.estimators_
-        ]
-        return np.mean(all_proba, axis=0)
 
-    def predict(self, X):
-        proba = self.predict_proba(X)
-        return self.classes_[np.argmax(proba, axis=1)]
+class ObliqueForestRegressor(RegressorForestMixin, BaseForest):
+    """Oblique Random Forest Regressor using linear combination splits."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        n_directions: int = 5,
+        criterion: str = "mse",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_impurity_decrease: float = 0.0,
+        max_features: Union[int, float, str, None] = "sqrt",
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.n_directions = n_directions
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+        self.max_features = max_features
+
+    def _make_estimator(self, random_state: int) -> _ObliqueRegressorTree:
+        return _ObliqueRegressorTree(
+            n_directions=self.n_directions,
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            max_features=self.max_features,
+            random_state=random_state,
+        )
+
 
 
 # ---------------------------------------------------------------------------
@@ -366,39 +372,7 @@ class ObliqueForest(ClassifierForestMixin, BaseForest):
 # ---------------------------------------------------------------------------
 
 class RotationForest(ClassifierForestMixin, BaseForest):
-    """Rotation Forest Classifier.
-
-    Implements: Rodriguez et al. (2006) IEEE TPAMI.
-    Algorithm:
-    1. For each tree, randomly split features into K groups.
-    2. For each group, apply PCA on a random bootstrap subsample.
-    3. Concatenate PCA components to form the rotation matrix R.
-    4. Transform X' = X @ R and train a standard decision tree on X'.
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    n_feature_groups : int, default=3
-        Number of feature groups per tree (K in the paper).
-    criterion : {"gini", "entropy"}, default="gini"
-    max_depth : int or None
-    min_samples_split : int, default=2
-    min_samples_leaf : int, default=1
-    pca_subsample : float, default=0.75
-        Fraction of samples used for PCA in each group.
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import RotationForest
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-    >>> clf = RotationForest(n_estimators=10, random_state=0)
-    >>> clf.fit(X, y).score(X, y) > 0.8
-    True
-    """
+    """Rotation Forest Classifier."""
 
     def __init__(
         self,
@@ -434,42 +408,25 @@ class RotationForest(ClassifierForestMixin, BaseForest):
         self.pca_subsample = pca_subsample
         self.max_features = max_features
 
-    def _make_rotation_matrix(
-        self, X: np.ndarray, rng: np.random.Generator
-    ) -> np.ndarray:
-        """Construct rotation matrix via grouped PCA.
-
-        Implements Rodriguez et al. (2006) Section 3.1.
-        """
+    def _make_rotation_matrix(self, X, rng):
         n, p = X.shape
         group_indices = np.array_split(rng.permutation(p), self.n_feature_groups)
         R_blocks = []
         for grp in group_indices:
-            if len(grp) == 0:
-                continue
+            if len(grp) == 0: continue
             X_grp = X[:, grp]
-            # Bootstrap subsample for PCA
             n_sub = max(1, int(self.pca_subsample * n))
             idx = rng.choice(n, size=n_sub, replace=False)
-            X_sub = X_grp[idx]
-            k = min(len(grp), X_sub.shape[0])
-            pca = PCA(n_components=k)
-            pca.fit(X_sub)
-            R_blocks.append((grp, pca.components_.T))  # (|grp|, k)
-
-        # Reconstruct full rotation matrix R of shape (p, p)
+            pca = PCA(n_components=min(len(grp), n_sub))
+            pca.fit(X_grp[idx])
+            R_blocks.append((grp, pca.components_.T))
         R = np.zeros((p, p))
         col_ptr = 0
         for grp, block in R_blocks:
-            r = len(grp)
-            c = block.shape[1]
-            R[np.ix_(grp, list(range(col_ptr, col_ptr + c)))] = block
-            col_ptr += c
-        # Pad remaining columns with identity if PCA dropped components
+            R[np.ix_(grp, range(col_ptr, col_ptr + block.shape[1]))] = block
+            col_ptr += block.shape[1]
         if col_ptr < p:
-            remaining = list(range(col_ptr, p))
-            for i, col in enumerate(remaining):
-                R[col, col] = 1.0
+            for i in range(col_ptr, p): R[i, i] = 1.0
         return R
 
     def _make_estimator(self, random_state: int) -> CARTClassifier:
@@ -499,8 +456,7 @@ class RotationForest(ClassifierForestMixin, BaseForest):
         self.n_classes_ = len(self.classes_)
         self.n_features_in_ = X.shape[1]
         from joblib import Parallel, delayed
-        master_rng = np.random.default_rng(self.random_state)
-        seeds = master_rng.integers(0, 2**31, size=self.n_estimators)
+        seeds = np.random.default_rng(self.random_state).integers(0, 2**31, size=self.n_estimators)
         self.estimators_ = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
             delayed(self._fit_single)(int(s), X, y, kwargs) for s in seeds
         )
@@ -511,15 +467,100 @@ class RotationForest(ClassifierForestMixin, BaseForest):
         X = np.asarray(X, dtype=float)
         all_proba = []
         for tree in self.estimators_:
-            R = tree.extra_["rotation_matrix"]
-            X_rot = X @ R
-            proba = np.array([tree._predict_node(x, tree.root_) for x in X_rot])
-            all_proba.append(proba)
+            X_rot = X @ tree.extra_["rotation_matrix"]
+            all_proba.append(np.array([tree._predict_node(x, tree.root_) for x in X_rot]))
         return np.mean(all_proba, axis=0)
 
-    def predict(self, X):
-        proba = self.predict_proba(X)
-        return self.classes_[np.argmax(proba, axis=1)]
+
+class RotationForestRegressor(RegressorForestMixin, BaseForest):
+    """Rotation Forest Regressor."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        n_feature_groups: int = 3,
+        criterion: str = "mse",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_impurity_decrease: float = 0.0,
+        pca_subsample: float = 0.75,
+        max_features: Union[int, float, str, None] = None,
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.n_feature_groups = n_feature_groups
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+        self.pca_subsample = pca_subsample
+        self.max_features = max_features
+
+    def _make_rotation_matrix(self, X, rng):
+        n, p = X.shape
+        group_indices = np.array_split(rng.permutation(p), self.n_feature_groups)
+        R_blocks = []
+        for grp in group_indices:
+            if len(grp) == 0: continue
+            X_grp = X[:, grp]
+            n_sub = max(1, int(self.pca_subsample * n))
+            idx = rng.choice(n, size=n_sub, replace=False)
+            pca = PCA(n_components=min(len(grp), n_sub))
+            pca.fit(X_grp[idx])
+            R_blocks.append((grp, pca.components_.T))
+        R = np.zeros((p, p))
+        col_ptr = 0
+        for grp, block in R_blocks:
+            R[np.ix_(grp, range(col_ptr, col_ptr + block.shape[1]))] = block
+            col_ptr += block.shape[1]
+        if col_ptr < p:
+            for i in range(col_ptr, p): R[i, i] = 1.0
+        return R
+
+    def _make_estimator(self, random_state: int) -> CARTRegressor:
+        return CARTRegressor(
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            max_features=self.max_features,
+            random_state=random_state,
+        )
+
+    def _fit_single(self, seed, X, y, fit_kwargs):
+        rng = np.random.default_rng(seed)
+        X_s, y_s = self._sample_data(X, y, rng)
+        R = self._make_rotation_matrix(X_s, rng)
+        tree = self._make_estimator(seed)
+        tree.fit(X_s @ R, y_s, **fit_kwargs)
+        tree.extra_ = {"rotation_matrix": R}
+        return tree
+
+    def fit(self, X, y, **kwargs):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+        self.n_features_in_ = X.shape[1]
+        from joblib import Parallel, delayed
+        seeds = np.random.default_rng(self.random_state).integers(0, 2**31, size=self.n_estimators)
+        self.estimators_ = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
+            delayed(self._fit_single)(int(s), X, y, kwargs) for s in seeds
+        )
+        return self
+
 
 
 # ---------------------------------------------------------------------------
@@ -527,32 +568,7 @@ class RotationForest(ClassifierForestMixin, BaseForest):
 # ---------------------------------------------------------------------------
 
 class RandomRotationForest(ClassifierForestMixin, BaseForest):
-    """Random Rotation Forest.
-
-    At each tree, a random orthogonal matrix Q is generated via QR
-    decomposition of a random Gaussian matrix, then X is transformed to X @ Q.
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    criterion : {"gini", "entropy"}, default="gini"
-    max_depth : int or None
-    min_samples_split : int, default=2
-    min_samples_leaf : int, default=1
-    max_features : int, float, str, or None, default="sqrt"
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import RandomRotationForest
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-    >>> clf = RandomRotationForest(n_estimators=10, random_state=0)
-    >>> clf.fit(X, y).score(X, y) > 0.8
-    True
-    """
+    """Random Rotation Forest Classifier."""
 
     def __init__(
         self,
@@ -586,7 +602,6 @@ class RandomRotationForest(ClassifierForestMixin, BaseForest):
 
     @staticmethod
     def _random_orthogonal(p: int, rng: np.random.Generator) -> np.ndarray:
-        """Generate a random p×p orthogonal matrix via QR decomposition."""
         G = rng.standard_normal((p, p))
         Q, _ = np.linalg.qr(G)
         return Q
@@ -618,24 +633,80 @@ class RandomRotationForest(ClassifierForestMixin, BaseForest):
         self.n_classes_ = len(self.classes_)
         self.n_features_in_ = X.shape[1]
         from joblib import Parallel, delayed
-        master_rng = np.random.default_rng(self.random_state)
-        seeds = master_rng.integers(0, 2**31, size=self.n_estimators)
+        seeds = np.random.default_rng(self.random_state).integers(0, 2**31, size=self.n_estimators)
         self.estimators_ = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
             delayed(self._fit_single)(int(s), X, y, kwargs) for s in seeds
         )
         return self
 
-    def predict_proba(self, X):
-        check_is_fitted(self, "estimators_")
-        X = np.asarray(X, dtype=float)
-        all_proba = []
-        for tree in self.estimators_:
-            Q = tree.extra_["rotation_matrix"]
-            X_rot = X @ Q
-            proba = np.array([tree._predict_node(x, tree.root_) for x in X_rot])
-            all_proba.append(proba)
-        return np.mean(all_proba, axis=0)
 
-    def predict(self, X):
-        proba = self.predict_proba(X)
-        return self.classes_[np.argmax(proba, axis=1)]
+class RandomRotationForestRegressor(RegressorForestMixin, BaseForest):
+    """Random Rotation Forest Regressor."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        criterion: str = "mse",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_impurity_decrease: float = 0.0,
+        max_features: Union[int, float, str, None] = "sqrt",
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+        self.max_features = max_features
+
+    @staticmethod
+    def _random_orthogonal(p: int, rng: np.random.Generator) -> np.ndarray:
+        G = rng.standard_normal((p, p))
+        Q, _ = np.linalg.qr(G)
+        return Q
+
+    def _make_estimator(self, random_state: int) -> CARTRegressor:
+        return CARTRegressor(
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            max_features=self.max_features,
+            random_state=random_state,
+        )
+
+    def _fit_single(self, seed, X, y, fit_kwargs):
+        rng = np.random.default_rng(seed)
+        X_s, y_s = self._sample_data(X, y, rng)
+        Q = self._random_orthogonal(X.shape[1], rng)
+        tree = self._make_estimator(seed)
+        tree.fit(X_s @ Q, y_s, **fit_kwargs)
+        tree.extra_ = {"rotation_matrix": Q}
+        return tree
+
+    def fit(self, X, y, **kwargs):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+        self.n_features_in_ = X.shape[1]
+        from joblib import Parallel, delayed
+        seeds = np.random.default_rng(self.random_state).integers(0, 2**31, size=self.n_estimators)
+        self.estimators_ = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
+            delayed(self._fit_single)(int(s), X, y, kwargs) for s in seeds
+        )
+        return self
+

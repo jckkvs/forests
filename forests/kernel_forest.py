@@ -268,40 +268,7 @@ _KernelRegressorTree = _build_kernel_tree(False, CARTRegressor)
 
 
 class RandomKernelForest(ClassifierForestMixin, BaseForest):
-    """Random Kernel Forest Classifier.
-
-    Implements: Ustimenko & Prokhorenkova (2022) IEEE TNNLS (IEEE 9837906).
-    Uses RBF kernel approximation via Random Fourier Features at each node.
-    Split boundary is found by maximizing an SVM-like margin in the kernel space.
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    n_rff : int, default=32
-        Number of random Fourier features (approximation rank).
-    gamma : float, default=1.0
-        RBF kernel bandwidth parameter.
-    svm_lambda : float, default=0.01
-        L2 regularization for the SVM objective.
-    svm_n_iter : int, default=20
-        SGD iterations for SVM optimization per node.
-    criterion : {"gini", "entropy"}, default="gini"
-    max_depth : int or None
-    min_samples_split : int, default=10
-    min_samples_leaf : int, default=5
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import RandomKernelForest
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-    >>> clf = RandomKernelForest(n_estimators=5, random_state=0)
-    >>> clf.fit(X, y).score(X, y) > 0.8
-    True
-    """
+    """Random Kernel Forest Classifier."""
 
     def __init__(
         self,
@@ -361,15 +328,63 @@ class RandomKernelForest(ClassifierForestMixin, BaseForest):
         super().fit(X, y, **kwargs)
         return self
 
-    def predict_proba(self, X):
-        check_is_fitted(self, "estimators_")
-        X = np.asarray(X, dtype=float)
-        all_proba = [
-            np.array([tree._predict_node(x, tree.root_) for x in X])
-            for tree in self.estimators_
-        ]
-        return np.mean(all_proba, axis=0)
 
-    def predict(self, X):
-        proba = self.predict_proba(X)
-        return self.classes_[np.argmax(proba, axis=1)]
+class RandomKernelForestRegressor(RegressorForestMixin, BaseForest):
+    """Random Kernel Forest Regressor."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        n_rff: int = 32,
+        gamma: float = 1.0,
+        svm_lambda: float = 0.01,
+        svm_n_iter: int = 20,
+        criterion: str = "mse",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 10,
+        min_samples_leaf: int = 5,
+        min_impurity_decrease: float = 0.0,
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.n_rff = n_rff
+        self.gamma = gamma
+        self.svm_lambda = svm_lambda
+        self.svm_n_iter = svm_n_iter
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+
+    def _make_estimator(self, random_state: int) -> _KernelRegressorTree:
+        return _KernelRegressorTree(
+            n_rff=self.n_rff,
+            gamma=self.gamma,
+            svm_lambda=self.svm_lambda,
+            svm_n_iter=self.svm_n_iter,
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            random_state=random_state,
+        )
+
+    def fit(self, X, y, **kwargs):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+        super().fit(X, y, **kwargs)
+        return self
+

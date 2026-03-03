@@ -174,38 +174,7 @@ class _VPRegressorTree(CARTRegressor):
 # ---------------------------------------------------------------------------
 
 class VariablePenaltyForest(ClassifierForestMixin, BaseForest):
-    """Random Forest with variable-reuse penalty.
-
-    Features that have been used as split variables more often get lower
-    penalty (i.e., they remain attractive for re-use). Unused features
-    receive a penalty proportional to `reuse_alpha * usage_deficit`.
-
-    This is a custom regularization scheme that encourages focused use
-    of informative features rather than spreading splits across all features.
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    reuse_alpha : float, default=0.1
-        Penalty weight on unused features.
-    criterion : {"gini", "entropy"}, default="gini"
-    max_depth : int or None
-    min_samples_split : int, default=2
-    min_samples_leaf : int, default=1
-    max_features : int, float, str, or None, default="sqrt"
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import VariablePenaltyForest
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-    >>> clf = VariablePenaltyForest(n_estimators=10, reuse_alpha=0.05, random_state=0)
-    >>> clf.fit(X, y).score(X, y) > 0.8
-    True
-    """
+    """Random Forest Classifier with variable-reuse penalty."""
 
     def __init__(
         self,
@@ -251,7 +220,7 @@ class VariablePenaltyForest(ClassifierForestMixin, BaseForest):
             random_state=random_state,
         )
 
-    def fit(self, X: np.ndarray, y: np.ndarray, **kwargs) -> "VariablePenaltyForest":
+    def fit(self, X, y, **kwargs):
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
         self.classes_ = np.unique(y)
@@ -259,19 +228,60 @@ class VariablePenaltyForest(ClassifierForestMixin, BaseForest):
         super().fit(X, y, **kwargs)
         return self
 
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        check_is_fitted(self, "estimators_")
-        X = np.asarray(X, dtype=float)
-        all_proba = [
-            np.array([tree._predict_node(x, tree.root_) for x in X])
-            for tree in self.estimators_
-        ]
-        return np.mean(all_proba, axis=0)
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        proba = self.predict_proba(X)
-        idx = np.argmax(proba, axis=1)
-        return self.classes_[idx]
+class VariablePenaltyForestRegressor(RegressorForestMixin, BaseForest):
+    """Random Forest Regressor with variable-reuse penalty."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        reuse_alpha: float = 0.1,
+        criterion: str = "mse",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_impurity_decrease: float = 0.0,
+        max_features: Union[int, float, str, None] = "sqrt",
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.reuse_alpha = reuse_alpha
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+        self.max_features = max_features
+
+    def _make_estimator(self, random_state: int) -> _VPRegressorTree:
+        return _VPRegressorTree(
+            reuse_alpha=self.reuse_alpha,
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            max_features=self.max_features,
+            random_state=random_state,
+        )
+
+    def fit(self, X, y, **kwargs):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+        super().fit(X, y, **kwargs)
+        return self
+
 
 
 # ---------------------------------------------------------------------------
@@ -279,39 +289,7 @@ class VariablePenaltyForest(ClassifierForestMixin, BaseForest):
 # ---------------------------------------------------------------------------
 
 class LeafWeightRegularizedForest(RegressorForestMixin, BaseForest):
-    """Random Forest with post-hoc leaf weight regularization (L1 or L2).
-
-    After each tree is grown, leaf weights (mean predictions) are shrunk
-    toward zero via L1 (soft-thresholding) or L2 (ridge shrinkage).
-
-    L2 shrinkage: w_leaf = w_leaf / (1 + alpha)
-    L1 shrinkage: w_leaf = sign(w_leaf) * max(|w_leaf| - alpha, 0)
-
-    Parameters
-    ----------
-    n_estimators : int, default=100
-    leaf_reg : {"none", "l1", "l2"}, default="l2"
-        Regularization type.
-    alpha : float, default=0.1
-        Regularization strength.
-    criterion : {"mse", "mae"}, default="mse"
-    max_depth : int or None
-    min_samples_split : int, default=2
-    min_samples_leaf : int, default=1
-    max_features : int, float, str, or None, default="sqrt"
-    bootstrap : bool, default=True
-    n_jobs : int, default=1
-    random_state : int or None
-
-    Examples
-    --------
-    >>> from forests import LeafWeightRegularizedForest
-    >>> from sklearn.datasets import load_diabetes
-    >>> X, y = load_diabetes(return_X_y=True)
-    >>> reg = LeafWeightRegularizedForest(n_estimators=10, alpha=0.1, random_state=0)
-    >>> reg.fit(X, y).score(X, y) > 0.5
-    True
-    """
+    """Random Forest Regressor with post-hoc leaf weight regularization (L1 or L2)."""
 
     def __init__(
         self,
@@ -358,19 +336,94 @@ class LeafWeightRegularizedForest(RegressorForestMixin, BaseForest):
             random_state=random_state,
         )
 
-    def _regularize_leaves(self, tree: CARTRegressor) -> None:
-        """Apply leaf weight shrinkage in-place."""
-        from .base import Node
+    def _regularize_leaves(self, tree) -> None:
         for node in tree._iter_nodes(tree.root_):
             if node.is_leaf and node.value is not None:
-                w = float(node.value[0])
+                w = node.value
                 if self.leaf_reg == "l2":
-                    node.value = np.array([w / (1.0 + self.alpha)])
+                    node.value = w / (1.0 + self.alpha)
                 elif self.leaf_reg == "l1":
-                    node.value = np.array([np.sign(w) * max(abs(w) - self.alpha, 0.0)])
-                # "none": no change
+                    node.value = np.sign(w) * np.maximum(np.abs(w) - self.alpha, 0.0)
 
     def _fit_single(self, seed, X, y, fit_kwargs):
         tree = super()._fit_single(seed, X, y, fit_kwargs)
         self._regularize_leaves(tree)
         return tree
+
+
+class LeafWeightRegularizedForestClassifier(ClassifierForestMixin, BaseForest):
+    """Random Forest Classifier with post-hoc leaf weight regularization (L1 or L2)."""
+
+    def __init__(
+        self,
+        n_estimators: int = 100,
+        leaf_reg: str = "l2",
+        alpha: float = 0.1,
+        criterion: str = "gini",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_impurity_decrease: float = 0.0,
+        max_features: Union[int, float, str, None] = "sqrt",
+        bootstrap: bool = True,
+        max_samples=None,
+        n_jobs: int = 1,
+        random_state: Optional[int] = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(
+            n_estimators=n_estimators,
+            bootstrap=bootstrap,
+            max_samples=max_samples,
+            n_jobs=n_jobs,
+            random_state=random_state,
+            verbose=verbose,
+        )
+        self.leaf_reg = leaf_reg
+        self.alpha = alpha
+        self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_decrease = min_impurity_decrease
+        self.max_features = max_features
+
+    def _make_estimator(self, random_state: int) -> CARTClassifier:
+        return CARTClassifier(
+            criterion=self.criterion,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_decrease=self.min_impurity_decrease,
+            max_features=self.max_features,
+            random_state=random_state,
+        )
+
+    def _regularize_leaves(self, tree) -> None:
+        # For classifier, we regularize the probability distribution in leaf
+        for node in tree._iter_nodes(tree.root_):
+            if node.is_leaf and node.value is not None:
+                # node.value is proba array
+                p = node.value
+                if self.leaf_reg == "l2":
+                    p = p / (1.0 + self.alpha)
+                elif self.leaf_reg == "l1":
+                    p = np.sign(p) * np.maximum(np.abs(p) - self.alpha, 0.0)
+                # Re-normalize
+                total = p.sum()
+                if total > 0: p /= total
+                node.value = p
+
+    def _fit_single(self, seed, X, y, fit_kwargs):
+        tree = super()._fit_single(seed, X, y, fit_kwargs)
+        self._regularize_leaves(tree)
+        return tree
+
+    def fit(self, X, y, **kwargs):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y)
+        self.classes_ = np.unique(y)
+        self.n_classes_ = len(self.classes_)
+        super().fit(X, y, **kwargs)
+        return self
+

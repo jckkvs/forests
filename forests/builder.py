@@ -85,11 +85,11 @@ def _check_incompatibilities(**params) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ForestBuilder
+# BaseForestsBuilder
 # ---------------------------------------------------------------------------
 
-class ForestBuilder(BaseEstimator):
-    """Unified Forest Builder with composable options.
+class BaseForestsBuilder(BaseEstimator):
+    """Unified Base Class for ForestsClassifier and ForestsRegressor.
 
     Compose any forest model by specifying algorithm components as arguments.
     Incompatible combinations trigger IncompatibleOptionsWarning and the
@@ -155,6 +155,7 @@ class ForestBuilder(BaseEstimator):
     max_depth : int or None
     min_samples_split : int, default=2
     min_samples_leaf : int, default=1
+    min_impurity_decrease : float, default=0.0
     max_features : int, float, str, or None, default="sqrt"
 
     --- Extra (kernel forest) ---
@@ -166,40 +167,34 @@ class ForestBuilder(BaseEstimator):
     n_directions : int, default=5
     density : float, default=0.1
 
+    --- Other Tree/Forest variants ---
+    extra_trees : bool, default=False
+        Use Extremely Randomized Trees (ExtraTrees).
+    boosting : bool, default=False
+        Use Gradient Boosted Trees.
+    learning_rate : float, default=0.1
+        Learning rate for Gradient Boosted Trees and RGF.
+    rgf : bool, default=False
+        Use Regularized Greedy Forest (RGF).
+    l2_leaf_reg : float, default=0.1
+        L2 regularization for RGF leaves.
+    rulefit : bool, default=False
+        Use RuleFit (extracts rules from the forest and fits a sparse linear model).
+    deep_forest : bool, default=False
+        Use Deep Forest (Cascade Forest).
+    conformal : bool, default=False
+        Use Conformal Prediction Forest.
+    isolation : bool, default=False
+        Use Isolation Forest (unsupervised anomaly detection). Activates only when task is suitable or fit is called without y.
+    mondrian : bool, default=False
+        Use Mondrian Forest (online capable, infinite-dimensional).
+    survival : bool, default=False
+        Use Random Survival Forest.
+
     --- Infrastructure ---
     n_jobs : int, default=1
     random_state : int or None
     verbose : int, default=0
-
-    Examples
-    --------
-    >>> from forests import ForestBuilder
-    >>> from sklearn.datasets import load_iris
-    >>> X, y = load_iris(return_X_y=True)
-
-    # Standard Random Forest (axis-aligned splits)
-    >>> fb = ForestBuilder(n_estimators=10, random_state=0)
-    >>> fb.fit(X, y).score(X, y) > 0.9
-    True
-
-    # Rotation Forest
-    >>> fb = ForestBuilder(n_estimators=10, rotation=True, random_state=0)
-    >>> fb.fit(X, y).score(X, y) > 0.8
-    True
-
-    # SPORF
-    >>> fb = ForestBuilder(n_estimators=10, split_type="oblique",
-    ...                    sparse_projection=True, random_state=0)
-    >>> fb.fit(X, y).score(X, y) > 0.8
-    True
-
-    # Monotone constrained (regression)
-    >>> from sklearn.datasets import make_regression
-    >>> X2, y2 = make_regression(n_samples=100, n_features=5, random_state=0)
-    >>> fb = ForestBuilder(n_estimators=10, monotone_constraints={0: 1},
-    ...                    task="regression", random_state=0)
-    >>> fb.fit(X2, y2).score(X2, y2) > 0.5
-    True
     """
 
     def __init__(
@@ -232,10 +227,20 @@ class ForestBuilder(BaseEstimator):
         svm_lambda: float = 0.01,
         n_directions: int = 5,
         density: float = 0.1,
+        extra_trees: bool = False,
+        boosting: bool = False,
+        learning_rate: float = 0.1,
+        rgf: bool = False,
+        l2_leaf_reg: float = 0.1,
+        rulefit: bool = False,
+        deep_forest: bool = False,
+        conformal: bool = False,
+        isolation: bool = False,
+        mondrian: bool = False,
+        survival: bool = False,
         n_jobs: int = 1,
         random_state: Optional[int] = None,
         verbose: int = 0,
-        task: str = "classification",  # "classification" or "regression"
     ) -> None:
         self.n_estimators = n_estimators
         self.split_type = split_type
@@ -265,10 +270,24 @@ class ForestBuilder(BaseEstimator):
         self.svm_lambda = svm_lambda
         self.n_directions = n_directions
         self.density = density
+        self.extra_trees = extra_trees
+        self.boosting = boosting
+        self.learning_rate = learning_rate
+        self.rgf = rgf
+        self.l2_leaf_reg = l2_leaf_reg
+        self.rulefit = rulefit
+        self.deep_forest = deep_forest
+        self.conformal = conformal
+        self.isolation = isolation
+        self.mondrian = mondrian
+        self.survival = survival
         self.n_jobs = n_jobs
         self.random_state = random_state
         self.verbose = verbose
-        self.task = task
+
+    @property
+    def task(self) -> str:
+        raise NotImplementedError("Subclasses must define 'task' property.")
 
     def _resolve_criterion(self) -> str:
         if self.criterion != "auto":
@@ -519,6 +538,136 @@ class ForestBuilder(BaseEstimator):
                 random_state=self.random_state,
             )
 
+        # --- RuleFit ---
+        if self.rulefit:
+            from .rulefit import RuleFit
+            return RuleFit(
+                n_estimators=self.n_estimators,
+                max_depth=self.max_depth if self.max_depth is not None else 3,
+                min_samples_leaf=self.min_samples_leaf,
+                tree_learning_rate=self.learning_rate,
+                random_state=self.random_state,
+            )
+
+        # --- Regularized Greedy Forest (RGF) ---
+        if self.rgf:
+            from .rgf import RegularizedGreedyForest
+            return RegularizedGreedyForest(
+                n_estimators=self.n_estimators,
+                max_depth=self.max_depth if self.max_depth is not None else 4,
+                min_samples_leaf=self.min_samples_leaf,
+                reg_lambda=self.l2_leaf_reg,
+                learning_rate=self.learning_rate,
+                max_features=self.max_features,
+                random_state=self.random_state,
+            )
+
+        # --- Gradient Boosted Trees ---
+        if self.boosting:
+            from .boosting import GradientBoostedClassifier, GradientBoostedRegressor
+            if self.task == "classification":
+                return GradientBoostedClassifier(
+                    n_estimators=self.n_estimators,
+                    learning_rate=self.learning_rate,
+                    max_depth=self.max_depth,
+                    random_state=self.random_state,
+                )
+            else:
+                return GradientBoostedRegressor(
+                    n_estimators=self.n_estimators,
+                    learning_rate=self.learning_rate,
+                    max_depth=self.max_depth,
+                    random_state=self.random_state,
+                )
+
+        # --- Deep Forest ---
+        if self.deep_forest:
+            if self.task == "regression":
+                raise ValueError("DeepForest does not support regression tasks.")
+            from .deep_forest import DeepForest
+            return DeepForest(
+                n_estimators_per_forest=self.n_estimators,
+                max_levels=self.max_depth if self.max_depth else 10,
+                random_state=self.random_state,
+            )
+
+        # --- Conformal Prediction ---
+        if self.conformal:
+            from .conformal import ConformalForestClassifier, ConformalForestRegressor
+            if self.task == "classification":
+                return ConformalForestClassifier(
+                    n_estimators=self.n_estimators,
+                    random_state=self.random_state,
+                )
+            else:
+                return ConformalForestRegressor(
+                    n_estimators=self.n_estimators,
+                    max_depth=self.max_depth,
+                    random_state=self.random_state,
+                )
+
+        # --- Extras (Mondrian, Isolation, Survival) ---
+        if self.mondrian:
+            if self.task == "regression":
+                raise ValueError("MondrianForest does not support regression tasks.")
+            from .extras import MondrianForest
+            n_cls = getattr(self, "_n_classes", 2)
+            return MondrianForest(
+                n_estimators=self.n_estimators,
+                n_classes=n_cls,
+                random_state=self.random_state,
+            )
+        if self.isolation:
+            from .extras import IsolationForest
+            return IsolationForest(
+                n_estimators=self.n_estimators,
+                max_samples="auto",
+                random_state=self.random_state,
+            )
+        if self.survival:
+            if self.task == "classification":
+                raise ValueError("RandomSurvivalForest requires regression-like formatting (time, event) and is not for classification.")
+            from .extras import RandomSurvivalForest
+            return RandomSurvivalForest(
+                n_estimators=self.n_estimators,
+                max_depth=self.max_depth if self.max_depth is not None else 5,
+                min_samples_leaf=self.min_samples_leaf,
+                random_state=self.random_state,
+            )
+
+        # --- ExtraTrees ---
+        if self.extra_trees:
+            if self.task == "classification":
+                from .random_forest import ExtraTreesClassifier
+                return ExtraTreesClassifier(
+                    n_estimators=self.n_estimators,
+                    criterion=crit,
+                    max_depth=self.max_depth,
+                    min_samples_split=self.min_samples_split,
+                    min_samples_leaf=self.min_samples_leaf,
+                    min_impurity_decrease=self.min_impurity_decrease,
+                    max_features=self.max_features,
+                    bootstrap=use_bootstrap,
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state,
+                    verbose=self.verbose,
+                )
+            else:
+                from .random_forest import ExtraTreesRegressor
+                return ExtraTreesRegressor(
+                    n_estimators=self.n_estimators,
+                    criterion=crit,
+                    max_depth=self.max_depth,
+                    min_samples_split=self.min_samples_split,
+                    min_samples_leaf=self.min_samples_leaf,
+                    min_impurity_decrease=self.min_impurity_decrease,
+                    max_features=self.max_features,
+                    bootstrap=use_bootstrap,
+                    n_jobs=self.n_jobs,
+                    random_state=self.random_state,
+                    verbose=self.verbose,
+                )
+
         # --- Default: Standard Random Forest ---
         if self.task == "classification":
             from .random_forest import RandomForestClassifier
@@ -551,31 +700,40 @@ class ForestBuilder(BaseEstimator):
                 verbose=self.verbose,
             )
 
-    def fit(self, X: np.ndarray, y: np.ndarray, **fit_kwargs) -> "ForestBuilder":
+    def fit(self, X: np.ndarray, y: Optional[np.ndarray] = None, **fit_kwargs) -> "BaseForestsBuilder":
         """Fit the selected forest model.
 
         Parameters
         ----------
         X : (n, p) array
-        y : (n,) target array
+        y : (n,) target array or None (for IsolationForest)
         **fit_kwargs : additional arguments passed to model.fit()
-            e.g., W=W for CausalForest
+            e.g., W=W for CausalForest, e=events for RandomSurvivalForest
 
         Returns
         -------
         self
         """
         X = np.asarray(X, dtype=float)
-        y = np.asarray(y)
 
         # Determine number of classes for soft_tree
-        if self.task == "classification":
-            self._n_classes = int(len(np.unique(y)))
+        if self.task == "classification" and y is not None:
+            self._n_classes = int(len(np.unique(np.asarray(y))))
+        elif self.task == "classification":
+            self._n_classes = 2 # fallback for unsupervised like Isolation
         else:
             self._n_classes = 1
 
         self.model_ = self._build_model()
-        self.model_.fit(X, y, **fit_kwargs)
+        if self.isolation:
+            self.model_.fit(X, **fit_kwargs)
+        elif self.survival:
+            if "e" not in fit_kwargs:
+                raise ValueError("RandomSurvivalForest requires 'e' (event indicator) in fit_kwargs. e.g. fit(X, t, e=events)")
+            self.model_.fit(X, np.asarray(y), **fit_kwargs)
+        else:
+            self.model_.fit(X, np.asarray(y), **fit_kwargs)
+            
         self.n_features_in_ = X.shape[1]
         self.model_type_ = type(self.model_).__name__
         return self
@@ -622,3 +780,53 @@ class ForestBuilder(BaseEstimator):
         if hasattr(self.model_, "estimators_"):
             return self.model_.estimators_
         return []
+
+# ---------------------------------------------------------------------------
+# Derived Classes
+# ---------------------------------------------------------------------------
+
+from sklearn.base import ClassifierMixin, RegressorMixin
+
+class ForestsClassifier(BaseForestsBuilder, ClassifierMixin):
+    """Builder for Forest Classification models.
+    
+    Examples
+    --------
+    >>> from forests import ForestsClassifier
+    >>> from sklearn.datasets import load_iris
+    >>> X, y = load_iris(return_X_y=True)
+
+    # Standard Random Forest (axis-aligned splits)
+    >>> fb = ForestsClassifier(n_estimators=10, random_state=0)
+    >>> fb.fit(X, y).score(X, y) > 0.9
+    True
+
+    # Rotation Forest
+    >>> fb = ForestsClassifier(n_estimators=10, rotation=True, random_state=0)
+    >>> fb.fit(X, y).score(X, y) > 0.8
+    True
+    """
+
+    @property
+    def task(self) -> str:
+        return "classification"
+
+
+class ForestsRegressor(BaseForestsBuilder, RegressorMixin):
+    """Builder for Forest Regression models.
+    
+    Examples
+    --------
+    >>> from forests import ForestsRegressor
+    >>> from sklearn.datasets import make_regression
+    >>> X, y = make_regression(n_samples=100, n_features=5, random_state=0)
+
+    # Monotone constrained (regression)
+    >>> fb = ForestsRegressor(n_estimators=10, monotone_constraints={0: 1}, random_state=0)
+    >>> fb.fit(X, y).score(X, y) > 0.5
+    True
+    """
+
+    @property
+    def task(self) -> str:
+        return "regression"

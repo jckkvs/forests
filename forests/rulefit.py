@@ -219,7 +219,7 @@ class RuleFit(RegressorMixin, BaseEstimator):
                 random_state=seed,
             )
             tree.fit(X, residuals)
-            pred = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+            pred = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
             residuals -= self.tree_learning_rate * pred
             trees.append(tree)
         return trees

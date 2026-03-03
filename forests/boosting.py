@@ -162,8 +162,8 @@ class GradientBoostedRegressor(RegressorMixin, BaseEstimator):
                         node.value = np.array([float(residuals[mask].mean())])
                         break
 
-            # d) update F
-            step = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+            # Tree fits residuals. Preds are node.value[0]
+            step = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
             F += self.learning_rate * step
             self.estimators_.append(tree)
             self.train_scores_.append(float(np.mean((y - F) ** 2)))
@@ -176,7 +176,7 @@ class GradientBoostedRegressor(RegressorMixin, BaseEstimator):
         X = np.asarray(X, dtype=float)
         F = np.full(X.shape[0], self.init_pred_)
         for tree in self.estimators_:
-            step = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+            step = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
             F += self.learning_rate * step
         return F
 
@@ -186,7 +186,7 @@ class GradientBoostedRegressor(RegressorMixin, BaseEstimator):
         X = np.asarray(X, dtype=float)
         F = np.full(X.shape[0], self.init_pred_)
         for tree in self.estimators_:
-            step = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+            step = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
             F = F + self.learning_rate * step
             yield F.copy()
 
@@ -304,7 +304,7 @@ class GradientBoostedClassifier(ClassifierMixin, BaseEstimator):
                             node.value = np.array([gamma])
                             break
 
-                step_k = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+                step_k = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
                 F[:, k] += self.learning_rate * step_k
                 stage_trees.append(tree)
 
@@ -320,7 +320,7 @@ class GradientBoostedClassifier(ClassifierMixin, BaseEstimator):
         F = np.tile(self.init_log_odds_, (n, 1))
         for stage_trees in self.estimators_:
             for k, tree in enumerate(stage_trees):
-                step_k = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+                step_k = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
                 F[:, k] += self.learning_rate * step_k
         return _softmax(F)
 

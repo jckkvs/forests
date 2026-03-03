@@ -24,7 +24,7 @@ Provides:
 - Fuzzy Decision Tree
 - Extras: IsolationForest, QuantileRegressionForest, RandomSurvivalForest, MondrianForest
 - RF Similarity & RF Kernel
-- ForestBuilder: unified interface for all of the above
+- ForestsClassifier, ForestsRegressor: unified interface for all of the above
 """
 
 from .cart import CARTClassifier, CARTRegressor
@@ -56,7 +56,7 @@ from .boosting import GradientBoostedRegressor, GradientBoostedClassifier
 from .deep_forest import DeepForest
 from .conformal import ConformalForestRegressor, ConformalForestClassifier
 from .embedding import TotallyRandomTreesEmbedding, FuzzyDecisionTree
-from .builder import ForestBuilder, IncompatibleOptionsWarning
+from .builder import ForestsClassifier, ForestsRegressor, IncompatibleOptionsWarning
 
 __version__ = "0.1.0"
 __all__ = [
@@ -120,6 +120,7 @@ __all__ = [
     "RFSimilarity",
     "RFKernel",
     # Builder
-    "ForestBuilder",
+    "ForestsClassifier",
+    "ForestsRegressor",
     "IncompatibleOptionsWarning",
 ]

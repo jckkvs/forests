@@ -176,7 +176,7 @@ class RegularizedGreedyForest(BaseEstimator, RegressorMixin):
             self.trees_.append(tree)
 
             # Update residuals
-            step_pred = np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+            step_pred = np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
             residuals = residuals - step_pred
 
             # Periodic global weight update (every 10 steps)
@@ -201,5 +201,5 @@ class RegularizedGreedyForest(BaseEstimator, RegressorMixin):
         X = np.asarray(X, dtype=float)
         pred = np.full(X.shape[0], self.init_pred_)
         for tree in self.trees_:
-            pred += np.array([float(tree._predict_node(x, tree.root_)) for x in X])
+            pred += np.array([float(tree._predict_node(x, tree.root_)[0]) for x in X])
         return pred

@@ -1,0 +1,237 @@
+Metadata-Version: 2.4
+Name: forests
+Version: 0.1.0
+Summary: A comprehensive Python library for decision trees and forests
+Author: forests contributors
+License: MIT
+Keywords: machine-learning,decision-tree,random-forest,ensemble,oblique-forest,generalized-random-forest,soft-decision-tree,rotation-forest,sporf,rulefit
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.21
+Requires-Dist: scipy>=1.7
+Requires-Dist: scikit-learn>=1.0
+Requires-Dist: joblib>=1.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: pytest-xdist>=3.0; extra == "dev"
+Requires-Dist: mutmut>=2.4; extra == "dev"
+
+# forests 🌲🌳🌵
+
+**forests** is a comprehensive Python library for decision trees and forests —
+built entirely from scratch with a composable, sklearn-compatible API.
+
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+---
+
+## ✨ 特徴 (Features)
+
+- **18種類以上のアルゴリズム**をフルスクラッチで実装（linear-tree等の外部ライブラリ不使用）
+- **scikit-learn互換 API** (`fit`, `predict`, `predict_proba`, `score`, `apply`)
+- **`ForestBuilder` 総合クラス**: 引数一つで任意のフォレストを構成。トッピング式カスタマイズ対応
+- **RFSimilarity / RFKernel**: 葉の一致度に基づくサンプル間類似度・カーネル行列
+- 互換性のないオプションを指定した場合は **警告メッセージ** を発行
+
+---
+
+## 📦 インストール (Installation)
+
+```bash
+cd forests
+pip install -e ".[dev]"
+```
+
+---
+
+## 🚀 クイックスタート (Quickstart)
+
+### 個別クラスの使用
+
+```python
+from forests import CARTClassifier, RandomForestClassifier, RotationForest
+from sklearn.datasets import load_iris
+
+X, y = load_iris(return_X_y=True)
+
+# CART決定木
+cart = CARTClassifier(max_depth=3, criterion="gini", random_state=0)
+cart.fit(X, y)
+print(f"CART accuracy: {cart.score(X, y):.3f}")
+
+# ランダムフォレスト
+rf = RandomForestClassifier(n_estimators=100, random_state=0)
+rf.fit(X, y)
+print(f"RF accuracy: {rf.score(X, y):.3f}")
+
+# Rotation Forest (Rodriguez et al. 2006)
+rotf = RotationForest(n_estimators=50, random_state=0)
+rotf.fit(X, y)
+print(f"RotationForest accuracy: {rotf.score(X, y):.3f}")
+```
+
+### ForestBuilder でトッピング式カスタマイズ
+
+```python
+from forests import ForestBuilder
+
+# SPORF (Sparse Projection Oblique Randomer Forest)
+fb = ForestBuilder(
+    n_estimators=100,
+    split_type="oblique",
+    sparse_projection=True,   # SPORF有効化
+    density=0.1,
+    random_state=0,
+    task="classification"
+)
+fb.fit(X, y)
+print(f"SPORF accuracy: {fb.score(X, y):.3f}")
+print(f"使用モデル: {fb.model_type_}")
+
+# Rotation Forest + 変数再利用ペナルティ
+fb2 = ForestBuilder(
+    n_estimators=50,
+    rotation=True,
+    variable_reuse_penalty=0.1,
+    random_state=0,
+    task="classification"
+)
+fb2.fit(X, y)
+```
+
+### 互換性警告の例
+
+```python
+import warnings
+from forests import ForestBuilder, IncompatibleOptionsWarning
+
+# 競合するオプションを指定すると警告が発生
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter("always")
+    fb = ForestBuilder(
+        rotation=True,
+        split_type="oblique",   # ← rotation と oblique は競合
+        task="classification"
+    )
+    fb.fit(X, y)
+    print(w[0].message)
+# [ForestBuilder 互換性警告] rotation=True と split_type='oblique' は機能が重複しています...
+```
+
+### RFSimilarity / RFKernel
+
+```python
+from forests import RandomForestClassifier, RFSimilarity, RFKernel
+
+rf = RandomForestClassifier(n_estimators=50, random_state=0).fit(X, y)
+
+# サンプル間の類似度行列 (n × n)
+sim = RFSimilarity(rf)
+S = sim.fit_transform(X)
+print(f"Similarity matrix shape: {S.shape}")   # (150, 150)
+print(f"S[0, 0] = {S[0, 0]:.3f}")              # 1.0 (自分自身)
+
+# カーネル行列 → SVM等に利用可能
+kernel = RFKernel(rf, mode="cosine")
+K = kernel.fit_transform(X)
+print(f"Kernel matrix shape: {K.shape}")       # (150, 150)
+
+# SVM with RF kernel
+from sklearn.svm import SVC
+svm = SVC(kernel="precomputed")
+svm.fit(K, y)
+print(f"RF-kernel SVM accuracy: {svm.score(K, y):.3f}")
+```
+
+### Generalized Random Forest (GRF)
+
+```python
+from forests import GeneralizedRandomForest, CausalForest
+import numpy as np
+
+# 平均推定 (標準RF近似)
+grf = GeneralizedRandomForest(n_estimators=50, random_state=0)
+grf.fit(X, y.astype(float))
+
+# 因果推論フォレスト (CATE推定)
+rng = np.random.default_rng(0)
+n = 500
+X_c = rng.random((n, 5))
+W = rng.binomial(1, 0.5, n)
+tau = X_c[:, 0]  # 真の処置効果
+Y = tau * W + rng.normal(0, 0.1, n)
+
+cf = CausalForest(n_estimators=50, random_state=0)
+cf.fit(X_c, Y, W)
+cate_hat = cf.predict(X_c)
+print(f"ATE推定: {cf.ate():.3f} (真値: {tau.mean():.3f})")
+```
+
+### RuleFit
+
+```python
+from forests import RuleFit
+from sklearn.datasets import load_diabetes
+
+X_d, y_d = load_diabetes(return_X_y=True)
+rf = RuleFit(n_estimators=50, alpha=0.01, random_state=0)
+rf.fit(X_d, y_d)
+print(f"R²: {rf.score(X_d, y_d):.3f}")
+# 重要ルールを表示
+for rule, coef in rf.get_rules(top_n=3):
+    print(f"  {rule}: coef={coef:.4f}")
+```
+
+---
+
+## 📚 実装アルゴリズム一覧
+
+| カテゴリ | クラス | 論文 |
+|---------|--------|------|
+| CART | `CARTClassifier`, `CARTRegressor` | Breiman et al. (1984) |
+| Random Forest | `RandomForestClassifier`, `RandomForestRegressor` | Breiman (2001) |
+| Extra Trees | `ExtraTreesClassifier`, `ExtraTreesRegressor` | Geurts et al. (2006) |
+| 正則化 | `VariablePenaltyForest`, `LeafWeightRegularizedForest` | カスタム実装 |
+| 制約 | `MonotonicConstrainedForest`, `LinearConstrainedForest` | カスタム実装 |
+| 斜め分割 | `ObliqueForest` | Murthy et al. (1994) |
+| Rotation Forest | `RotationForest`, `RandomRotationForest` | Rodriguez et al. (2006) |
+| SPORF | `SPORFClassifier`, `SPORFRegressor` | Tomita et al. (2020) JMLR |
+| RGF | `RegularizedGreedyForest` | Johnson & Zhang (2014) |
+| ソフト決定木 | `SoftDecisionTree`, `SoftDecisionForest` | Frosst & Hinton (2017) |
+| Linear Tree | `LinearTree`, `LinearForest`, `LinearBoost` | Potts & Sammut (2005) |
+| RuleFit | `RuleFit` | Friedman & Popescu (2008) |
+| Bernoulli RF | `BernoulliRandomForest` | Denil et al. (2014) |
+| GRF | `GeneralizedRandomForest`, `QuantileForest`, `CausalForest` | Athey et al. (2019) |
+| Kernel Forest | `RandomKernelForest` | Ustimenko & Prokhorenkova (2022) |
+| 異常検知 | `IsolationForest` | Liu et al. (2008) |
+| 分位回帰 | `QuantileRegressionForest` | Meinshausen (2006) |
+| 生存分析 | `RandomSurvivalForest` | Ishwaran et al. (2008) |
+| オンライン学習 | `MondrianForest` | Lakshminarayanan et al. (2014) |
+| 類似度 | `RFSimilarity`, `RFKernel` | Breiman (2001) §8 |
+| **総合クラス** | **`ForestBuilder`** | — |
+
+---
+
+## 🧪 テスト実行
+
+```bash
+cd forests
+pytest tests/ -v --cov=forests --cov-branch --cov-report=term-missing
+```
+
+---
+
+## 📜 ライセンス
+
+MIT License © 2025 forests contributors
